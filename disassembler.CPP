@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <fstream>
+#include <sstream>
+#include <vector>
 
 using namespace std;
 
@@ -81,7 +83,8 @@ string decodeOperand(uint8_t value, uint16_t nextWord = 0, bool in_b = false)
         return "UNKNOWN OPERAND";
 }
 
-void disassemble(uint16_t word, uint16_t nextWord = 0)
+// Print the disassembled instructions
+void disassemble(uint16_t word, uint16_t nextWord)
 {
     uint8_t opcode =  word & 0x1F;        // Extract ooooo
     uint8_t b      = (word >> 5) & 0x1F;  // Extract bbbbb
@@ -105,11 +108,82 @@ void disassemble(uint16_t word, uint16_t nextWord = 0)
         cout << "UNKNOWN OPCODE";
 }
 
+// Parse the file and convert it into a vector of 16-bit words
+vector<uint16_t> parseFile(const string& filePath)
+{
+    ifstream inputFile(filePath);
+    if (!inputFile) {
+        cerr << "\nError: Unable to open file.";
+        return {};
+    }
+
+    cout << "\nParsing file...";
+    vector<uint16_t> words;
+    string line;
+
+    while(getline(inputFile, line)) 
+    {
+        istringstream wordStream(line);
+        string        hexWord;
+
+        // Parse each word in the stream
+        while(wordStream >> hexWord) {
+            try {
+                uint16_t word = static_cast<uint16_t>(stoi(hexWord, nullptr, 16));
+                words.push_back(word);
+            } catch (invalid_argument&) {
+                cerr << "Error: Invalid hex value " << hexWord << "\n";
+            }
+        }
+    }
+
+    inputFile.close();
+    return words;
+}
+
+// Process a vector of words and disassemble each instruction
+void processWords(const vector<uint16_t> words)
+{
+    cout << "\nDisassembled instructions:\n";
+
+    for(int i = 0; i < words.size();) 
+    {
+        uint16_t word     = words[i];
+        uint16_t nextWord = (i + 1 < words.size()) ? words[i + 1] : 0; // Next word or zero if there is none
+
+        // Disassemble the current instruction
+        cout << "\n";
+        disassemble(word, nextWord);
+
+        // Determine if the next word is consumed by the current instruction
+        uint8_t b = (word >> 5)  & 0x1F; // Extract bbbbb
+        uint8_t a = (word >> 10) & 0x3F; // Extract aaaaaa
+
+        if (((b >= 0x10 && b <= 0x17) || b == 0x1a || b == 0x1e || b == 0x1f) || 
+            ((a >= 0x10 && a <= 0x17) || a == 0x1a || a == 0x1e || a == 0x1f))
+            i += 2; // Skip the next word
+        else
+            i += 1;
+    }
+}
+
 int main()
 {
-    uint16_t word = 0x8752;     // Example instruction
-    uint16_t nextWord = 0x0001; // Example next word
-    disassemble(word, nextWord);
+    string filePath;
+
+    cout << "\nEnter the file path (hex words separated by spaces or line breaks, 78f1 0001 etc): ";
+    cin  >> filePath;
+    
+    // Parse the file into a vector of words
+    vector<uint16_t> words = parseFile(filePath);
+    
+    if (words.empty()) {
+        cerr << "\nError: Nonvalid words found. Exiting...";
+        return 1;
+    }
+
+    // Process the parsed words
+    processWords(words);
 
     return 0;
 } 
